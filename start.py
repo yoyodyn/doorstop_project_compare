@@ -2,6 +2,7 @@
     and try to publish a set of project specifications."""
 
 import subprocess
+import argparse
 import os
 import shutil
 import io
@@ -44,6 +45,15 @@ os.chdir('C:\\Projects\\QMSI\\RequirementsManagement\\req_test')
 # Print the current working directory
 log.info("The Current working directory now is: {0}".format(os.getcwd()))
 
+# check if the branch being checked can a fast-forward merge.  Log a warning if not.
+# git merge-base --is-ancestor <commit> <commit>
+process = subprocess.Popen(['git', 'merge-base', '--is-ancestor', mainbranch, projectbranch],
+                           stdout=PIPE, stderr=PIPE)
+stdoutput, stderroutput = process.communicate()
+if process.returncode:
+    log.warning(f"Branch {mainbranch} can not be fast-forwarded to {projectbranch} " +
+             "comparison may not be accurate until rebased.")
+
 # place to put the files for generating the alternate project requirement "documents"
 # This could also be a passed in parameter with a default to the branch name
 tempPath = projectbranch.replace('/', '_')
@@ -55,7 +65,7 @@ if os.path.isdir(tempPath):
 os.makedirs(tempPath)
 
 # get the diff between the two branches.  Save the output.
-# git diff --no-prefix -U100 master project/ProjA 
+# git diff --no-prefix -U100 master project/ProjA
 process = subprocess.Popen(['git', 'diff', '--no-prefix', '-U10000', mainbranch, projectbranch],
                            stdout=PIPE, stderr=PIPE)
 stdoutput, stderroutput = process.communicate()
@@ -159,7 +169,7 @@ for patched_file in patch_set:
             if normativeField or delimiter_count >= 2:
                 if line.is_removed or line.is_added:
                     normative_change = True
-            
+
             # we only want to decorate the added and removed lines in the text section
             if (current_field == "text" and line.value.startswith(" ")) or delimiter_count >= 2:
                 if line.is_removed:

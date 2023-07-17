@@ -1,7 +1,8 @@
 TODO:
-* Make branches to compare parameters, with master being one of the defaults
+* DONE - Make branches to compare parameters, with master being one of the defaults
 * Make the script an executable command from the bash prompt, should be able to work with virtual environments as well
-* Add a check that the project branch would be a fast forward from the main branch.  Display a warning otherwise.
+* DONE - Add a check that the project branch would be a fast forward from the main branch.  Display a warning otherwise.
+* Add a check that the project branch is currently checked out.  We need the _doorstop.yml files for the temp folders
 * Add support for different publishers.  Currently using the doorstop publisher, but project requirements would be formatted differently, possibly the levels would not get published.
     - should we allow the publisher to be decided form the doorstop.yml file for each document type?  That would make it easier for the overview and table doc types we want to use to be configurable.
 
