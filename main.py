@@ -1,39 +1,16 @@
 """Building main to eventually be used as the primary command line interface"""
 
-import subprocess
 import argparse
-import sys
 import os
 import shutil
-import io
-import logging
 import doorstop
 import frontmatter
 
-from unidiff import PatchSet
+from common import logger, DEFAULT_ITEMFORMAT, ITEM_FORMAT_MARKDOWN, ITEM_FORMAT_YAML, NON_NORMATIVE_FIELDS, REMOVED_LINE, ADDED_LINE
+from vcs_common import _check_active_branch, _check_branch_fastforward, _read_branch_diff
+from publish_project import publish_project
 
-logging.basicConfig(filename='startfile.log', filemode='w', level=1)
-
-logger = logging.getLogger
 log = logger(__name__)
-
-PIPE = subprocess.PIPE
-ITEM_FORMAT_YAML = "yaml"
-ITEM_FORMAT_MARKDOWN = "markdown"
-DEFAULT_ITEMFORMAT = ITEM_FORMAT_YAML
-
-NON_NORMATIVE_FIELDS = [
-    "active",
-    "derived",
-    "header",
-    "level",
-    "normative",
-    "reviewed"
-]
-
-# markup lines that have been added or removed
-REMOVED_LINE = "  <span style=\"color:red\"><del>{0}</del></span>\r\n"
-ADDED_LINE = "  <span style=\"color:blue\">{0}</span>\r\n"
 
 def main(args=None):
     """Process command line arguments and run the program"""
@@ -93,67 +70,8 @@ def main(args=None):
     if not os.path.exists(publish_folder):
         os.makedirs(publish_folder, exist_ok=True)
 
-    doorstop.publisher.publish(tree, publish_folder, ".html", toc=False)
-
-def _check_branch_fastforward(main_branch, project_branch):
-    # check if the branch being checked can a fast-forward merge.  Log a warning if not.
-    # git merge-base --is-ancestor <commit> <commit>
-    with subprocess.Popen(['git', 'merge-base', '--is-ancestor', main_branch,
-                           project_branch]) as process:
-        process.communicate()
-        if process.returncode:
-            log.warning("Branch %s can not be fast-forwarded to %s " +
-                    "comparison may not be accurate until rebased.", main_branch, project_branch)
-            return False
-    return True
-
-def _check_active_branch(project_branch):
-    # git symbolic-ref --short -q HEAD
-    with subprocess.Popen(['git', 'symbolic-ref', '--short', '-q', 'HEAD'],
-                            stdout=PIPE, stderr=PIPE) as process:
-        stdoutput, stderroutput = process.communicate()
-        if 'fatal' in stderroutput.decode():
-            # Handle error case
-            log.fatal("Error getting active branch %s", stderroutput)
-            sys.exit()
-        if project_branch not in stdoutput.decode():
-            log.fatal("Must check out the branch to check %s", project_branch)
-            log.fatal("Active branch is %s", stdoutput.decode())
-            sys.exit()
-
-def _read_branch_diff(main_branch, project_branch):
-    """ this finds the newest common ancester of both branches to base the diff on
-        this is done so that even after project install and the project branch is 
-        merged into master/production, the original branch can be left in place
-        and this method can still be used to find what was changed.  Note that this
-        will only work if a merge is done with a --no-ff option so that the branch
-        is left as a spur in the history graph
-    """
-    base_commit = main_branch
-    # git merge-base project/ProjA master
-    with subprocess.Popen(['git', 'merge-base', project_branch, main_branch],
-                          stdout=PIPE, stderr=PIPE) as process:
-        stdoutput, stderroutput = process.communicate()
-        if 'fatal' in stderroutput.decode():
-            # Handle error case
-            log.fatal("Error process merge-base: %s", stderroutput)
-            sys.exit()
-        base_commit = stdoutput.decode().strip()
-
-    # get the diff between the two branches.  Save the output.
-    # git diff --no-prefix -U100 master project/ProjA
-    with subprocess.Popen(['git', 'diff', '--no-prefix', '-U10000', base_commit, project_branch],
-                            stdout=PIPE, stderr=PIPE) as process:
-        stdoutput, stderroutput = process.communicate()
-        if 'fatal' in stderroutput.decode():
-            # Handle error case
-            log.fatal("Error process diff: %s", stderroutput)
-            sys.exit()
-
-        # using PatchSet to parse the diff output easily
-        patch_set = PatchSet(io.BytesIO(stdoutput), encoding='utf-8')
-
-        return patch_set
+    # doorstop.publisher.publish(tree, publish_folder, ".html", toc=False)
+    publish_project(tree, projectbranch, publish_folder)
 
 def _process_diff(patch_set, temp_path):
     doc_list = []

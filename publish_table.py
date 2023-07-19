@@ -11,83 +11,9 @@ import doorstop
 
 from bottle import template as bottle_template
 from doorstop.core.types import is_item, is_tree, iter_documents, iter_items
+from publish_common import (_format_level, _format_md_ref, _format_md_references, 
+                            _format_md_links, _format_md_label_links)
 
-def _format_level(level):
-    """Convert a level to a string and keep zeros if not a top level."""
-    text = str(level)
-    if text.endswith(".0") and len(text) > 3:
-        text = text[:-2]
-    return text
-
-def _format_md_attr_list(item, linkify):
-    """Create a Markdown attribute list for a heading."""
-    return " {{#{u} }}".format(u=item.uid) if linkify else ""
-
-def _format_md_ref(item):
-    """Format an external reference in Markdown."""
-    path, line = item.find_ref()
-    path = path.replace("\\", "/")  # always use unix-style paths
-    if line:
-        return "> `{p}` (line {line})".format(p=path, line=line)
-    return "> `{p}`".format(p=path)
-
-def _format_md_references(item):
-    """Format an external reference in Markdown."""
-    references = item.find_references()
-    text_refs = []
-    for ref_item in references:
-        path, line = ref_item
-        path = path.replace("\\", "/")  # always use unix-style paths
-
-        if line:
-            text_refs.append("> `{p}` (line {line})".format(p=path, line=line))
-        else:
-            text_refs.append("> `{p}`".format(p=path))
-
-    return "\n".join(ref for ref in text_refs)
-
-def _format_html_item_link(item, linkify=True):
-    """Format an item link in HTML."""
-    if linkify and is_item(item):
-        if item.header:
-            link = '<a href="{p}.html#{u}">{u} {h}</a>'.format(
-                u=item.uid, h=item.header, p=item.document.prefix
-            )
-        else:
-            link = '<a href="{p}.html#{u}">{u}</a>'.format(
-                u=item.uid, p=item.document.prefix
-            )
-        return link
-    else:
-        return str(item.uid)  # if not `Item`, assume this is an `UnknownItem`
-
-def _format_md_links(items, linkify, to_html=False):
-    """Format a list of linked items in Markdown."""
-    links = []
-    for item in items:
-        if to_html:
-            link = _format_html_item_link(item, linkify=linkify)
-        else:
-            link = _format_md_item_link(item, linkify=linkify)
-        links.append(link)
-    return ", ".join(links)
-
-
-def _format_md_item_link(item, linkify=True):
-    """Format an item link in Markdown."""
-    if linkify and is_item(item):
-        if item.header:
-            return "[{u} {h}]({p}.md#{u})".format(
-                u=item.uid, h=item.header, p=item.document.prefix
-            )
-        return "[{u}]({p}.md#{u})".format(u=item.uid, p=item.document.prefix)
-    return str(item.uid)  # if not `Item`, assume this is an `UnknownItem`
-
-def _format_md_label_links(label, links, linkify):
-    """Join a string of label and links with formatting."""
-    if linkify:
-        return "*{lb}* {ls}".format(lb=label, ls=links)
-    return "*{lb} {ls}*".format(lb=label, ls=links)
 
 KEY_IMAGE = "<img src=assets/doorstop/key.png />"
 
@@ -100,8 +26,16 @@ def _tab_lines_markdown(obj, **kwargs):
     :return: iterator of lines of text
 
     """
+    def _start_table(pub_list):
+        columns = [ "Column" ]
+        columns.extend(pub_list)
+        columns.append("Notes")
+
+        return "\n".join(["|" + "|".join(columns) + "|", "|" + " ---- |" * len(columns)])
+
     linkify = kwargs.get("linkify", False)
     to_html = kwargs.get("to_html", False)
+    table_started = False
     for item in iter_items(obj):
         level = _format_level(item.level)
 
@@ -114,14 +48,10 @@ def _tab_lines_markdown(obj, **kwargs):
             standard = "\n### {lev} {t}".format(
                 lev=level, t=text_lines[0] if text_lines else ""
             )
-            columns = [ "Column" ]
-            columns.extend(item.document.publish)
-            columns.append("Notes")
 
+            table_started = True
             yield standard
-            yield ""
-            yield "|" + "|".join(columns) + "|"
-            yield "|" + " ---- |" * len(columns)
+            yield _start_table(item.document.publish)
         else:
             key = item.attribute("primarykey") == True
 
@@ -155,6 +85,9 @@ def _tab_lines_markdown(obj, **kwargs):
                 label_links = _format_md_label_links(label, links, linkify)
                 text_lines.append(label_links)
 
+            if not table_started:
+                yield _start_table(item.document.publish)
+                table_started = True
             columns.append("<br />".join(text_lines[1:]))
 
             yield "|" + "|".join(columns) + "|"
