@@ -4,26 +4,22 @@
     project overview.
 """
 import os
-import shutil
+#import shutil
 import bottle
 import doorstop
 import markdown
 
-from itertools import chain
+#from itertools import chain
 from bottle import template as bottle_template
 from doorstop.core.types import is_item, is_tree, iter_documents, iter_items, is_document, Prefix
-from common import log
+from common import log, OVERVIEW_DOCUMENT, REQUIREMENTS_DOCUMENT, TABLES_DOCUMENT
 from publish_common import (_format_md_ref, _format_md_references, _format_md_links,
                            _format_md_label_links, _format_md_attr_list)
 from publish_table import _tab_lines_markdown
-from vcs_common import _check_active_branch, _check_branch_fastforward, _read_branch_diff
+#from vcs_common import _check_active_branch, _check_branch_fastforward, _read_branch_diff
 
-# Could define some part of the document config that flags these, but we'll hard code for now
-OVERVIEW_DOCUMENT = 'OVR'
-REQUIREMENTS_DOCUMENT = 'REQ'
-TABLES_DOCUMENT = 'TAB'
 
-def publish_project(obj, project_name, path):
+def publish_project(obj, project_name, publish_path):
     """method to publish a project which is the difference between two branches in doorstop
     requirements.
     A project will have different publishing requirements.  We don't want to split up all 
@@ -52,12 +48,11 @@ def publish_project(obj, project_name, path):
     if not is_tree(obj):
         return
 
-    publish_path = path
     if publish_path == None:
         publish_path = "public"
 
     doc_lines = {}
-    for obj2, path2 in iter_documents(obj, path, ".html"):
+    for obj2, path2 in iter_documents(obj, publish_path, ".html"):
         doc_lines[obj2.prefix] = publish_lines(obj2, ".html")
 
     lines = []
@@ -78,26 +73,21 @@ def publish_project(obj, project_name, path):
 
     try:
         bottle.TEMPLATE_PATH.insert(
-            0, os.path.join(os.path.dirname(__file__), "views")
-        )
+            0, os.path.join(os.path.dirname(__file__), "views"))
         if "baseurl" not in bottle.SimpleTemplate.defaults:
             bottle.SimpleTemplate.defaults["baseurl"] = ""
-        html = bottle_template(
-            template, body=body, toc="", parent=obj.parent, document=obj
-        )
+        html = bottle_template(template, body=body, toc="", parent=obj.parent, document=obj)
     except Exception:
-        #log.error("Problem parsing the template %s", template)
+        log.error("Problem parsing the template %s", template)
         raise
-    #html = "\n".join(html.split(os.linesep))
     html = html.split(os.linesep)
 
-    doorstop.common.write_lines(html, os.path.join(publish_path, "index.html"), end=doorstop.settings.WRITE_LINESEPERATOR)
+    doorstop.common.write_lines(html, os.path.join(publish_path, "index.html"), 
+                                end=doorstop.settings.WRITE_LINESEPERATOR)
 
-    if obj2.copy_assets(assets_dir):
-        log.info("Copied assets from %s to %s", obj.assets, assets_dir)
-
-    # publish_filename = os.path.join(publish_path, "".join([document_name, ".html"]))
-    # doorstop.publisher.publish(tab_document, publish_filename, ".html", toc=False)
+    # take this out for now
+    # if obj2.copy_assets(assets_dir):
+    #     log.info("Copied assets from %s to %s", obj.assets, assets_dir)
 
 def _req_lines_markdown(obj, **kwargs):
     """Yield lines for a Markdown report.
@@ -119,6 +109,7 @@ def _req_lines_markdown(obj, **kwargs):
             # Level and Text
             standard = "- {t}".format(t=text_lines[0] if text_lines else "")
             attr_list = _format_md_attr_list(item, True)
+            yield ""
             yield standard + attr_list
             yield from text_lines[1:]
         else:
@@ -191,7 +182,7 @@ def _ovr_lines_markdown(obj, **kwargs):
         text_lines = item.text.splitlines()
         if item.header:
             yield ""
-            yield "### {t}".format(t=item.header)
+            yield f"### {item.header}"
             yield ""
         # Text
         if item.text:

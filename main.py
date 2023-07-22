@@ -6,7 +6,10 @@ import shutil
 import doorstop
 import frontmatter
 
-from common import logger, DEFAULT_ITEMFORMAT, ITEM_FORMAT_MARKDOWN, ITEM_FORMAT_YAML, NON_NORMATIVE_FIELDS, REMOVED_LINE, ADDED_LINE
+from common import (logger, DEFAULT_ITEMFORMAT, ITEM_FORMAT_MARKDOWN, ITEM_FORMAT_YAML,
+                    NON_NORMATIVE_FIELDS, REMOVED_LINE, ADDED_LINE, OVERVIEW_DOCUMENT,
+                    REQUIREMENTS_DOCUMENT, TABLES_DOCUMENT, CODE_BLOCK_BOUNDARY, 
+                    CODE_BLOCK_ONE_LINE, BLOCK_END, ADDED_BLOCK_START, REMOVED_BLOCK_START)
 from vcs_common import _check_active_branch, _check_branch_fastforward, _read_branch_diff
 from publish_project import publish_project
 
@@ -135,6 +138,10 @@ def _process_diff(patch_set, temp_path):
 
         current_field = ''
         normative_field = False
+        in_code_block = False
+        code_blocks = 0
+        added_code_blocks = []
+        removed_code_blocks = []
 
         # we should have included enough context lines that there is only one hunk per file
         for hunk in patched_file:
@@ -163,20 +170,89 @@ def _process_diff(patch_set, temp_path):
                     if line.is_removed or line.is_added:
                         normative_change = True
 
+                doc_name = os.path.split(os.path.dirname(patched_file.path))[1]
                 # we only want to decorate the added and removed lines in the text section
-                if (current_field == "text" and line.value.startswith(" ")) or delimiter_count >= 2:
-                    if line.is_removed:
-                        current_item.append(REMOVED_LINE.format(line.value.strip()))
-                    elif line.is_added:
-                        current_item.append(ADDED_LINE.format(line.value.strip()))
-                    else:
-                        current_item.append(line.value)
-                    continue
+                # don't want to do an decoration on the overview document
+                if doc_name.lower() != OVERVIEW_DOCUMENT.lower():
+                    if ((current_field == "text" and line.value.startswith(" ")) or
+                        delimiter_count >= 2):
+                        # check if we are starting a code section
+                        if CODE_BLOCK_ONE_LINE.search(line.value):
+                            # one line code block.  We might want to decorate this one,
+                            # but we will need to add separate lines
+                            if line.is_removed:
+                                current_item.append(REMOVED_BLOCK_START)
+                                current_item.append(line.value.strip())
+                                current_item.append(BLOCK_END)
+                            elif line.is_added:
+                                current_item.append(ADDED_BLOCK_START)
+                                current_item.append(line.value.strip())
+                                current_item.append(BLOCK_END)
+                            else:
+                                current_item.append(line.value)
+                            continue
+                        if CODE_BLOCK_BOUNDARY.search(line.value):
+                            if in_code_block:
+                                in_code_block = False
+                                code_blocks += 1
+                            else:
+                                in_code_block = True
+                                removed_code_blocks.append([])
+                                added_code_blocks.append([])
+                            current_item.append(line.value)
+                            continue
+                        if in_code_block:
+                            if line.is_context or line.is_removed:
+                                removed_code_blocks[code_blocks].append(line.value)
+                            if line.is_context or line.is_added:
+                                added_code_blocks[code_blocks].append(line.value)
+                            continue
+                        if len(line.value.strip()) >= 0:
+                            if line.is_removed:
+                                current_item.append(REMOVED_LINE.format(line.value.strip()))
+                            elif line.is_added:
+                                current_item.append(ADDED_LINE.format(line.value.strip()))
+                            else:
+                                current_item.append(line.value)
+                            continue
 
                 # do not add removed lines from the other fields
-                if line.is_added or line.is_context:
+                # do add all lines for a file that was deleted.
+                if line.is_added or line.is_context or patched_file.is_removed_file:
                     current_item.append(line.value)
 
+        # so, if there were any code blocks in the file, we have those separated now.
+        # We need to put those back in the correct locations, with the add/remove
+        # decorations in place.
+
+        def insert_full_block (block, item):
+            item.append(line)
+            for code_line in block:
+                item.append(code_line)
+            item.append('  ```\r\n')
+            item.append(BLOCK_END)
+
+        if len(removed_code_blocks) > 0 or len(added_code_blocks) > 0:
+            temp_item = []
+            code_blocks = 0
+            in_code_block = False
+            for line in current_item:
+                if CODE_BLOCK_BOUNDARY.search(line):
+                    # since we've already added the block end, we don't want to add it again
+                    if in_code_block:
+                        in_code_block = False
+                        continue
+                    in_code_block = True
+                    if len(removed_code_blocks[code_blocks]) > 0:
+                        temp_item.append(REMOVED_BLOCK_START)
+                        insert_full_block(removed_code_blocks[code_blocks], temp_item)
+                    if len(added_code_blocks[code_blocks]) > 0:
+                        temp_item.append(ADDED_BLOCK_START)
+                        insert_full_block(added_code_blocks[code_blocks], temp_item)
+                    code_blocks += 1
+                    continue
+                temp_item.append(line)
+            current_item = temp_item
         # working on checking to make sure the normative parts of the file have changed
         # before adding the file to the project folder.
         # need to be able to load yaml and md files here.
