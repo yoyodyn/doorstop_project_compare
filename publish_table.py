@@ -58,7 +58,10 @@ def _tab_lines_markdown(obj, **kwargs):
             columns = [ '{}{} <small>[{}]</small>'.format(KEY_IMAGE if key else '',
                                                           text_lines[0], item.uid) ]
             for attr in item.document.publish:
-                columns.append("{}".format(item.attribute(attr)))
+                to_add = item.attribute(attr)
+                if isinstance(to_add, str):
+                    to_add = to_add.replace('\n', '<br />')
+                columns.append(f"{to_add}")
 
             # Reference
             if item.ref:

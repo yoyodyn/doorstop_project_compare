@@ -9,7 +9,8 @@ import frontmatter
 from common import (logger, DEFAULT_ITEMFORMAT, ITEM_FORMAT_MARKDOWN, ITEM_FORMAT_YAML,
                     NON_NORMATIVE_FIELDS, REMOVED_LINE, ADDED_LINE, OVERVIEW_DOCUMENT,
                     REQUIREMENTS_DOCUMENT, TABLES_DOCUMENT, CODE_BLOCK_BOUNDARY, 
-                    CODE_BLOCK_ONE_LINE, BLOCK_END, ADDED_BLOCK_START, REMOVED_BLOCK_START)
+                    CODE_BLOCK_ONE_LINE, BLOCK_END, ADDED_BLOCK_START, REMOVED_BLOCK_START,
+                    TABLE_FIELDS)
 from vcs_common import _check_active_branch, _check_branch_fastforward, _read_branch_diff
 from publish_project import publish_project
 
@@ -137,15 +138,21 @@ def _process_diff(patch_set, temp_path):
             handler = frontmatter.YAMLHandler()
 
         current_field = ''
+        current_value = ''
         normative_field = False
+        table_field = False
         in_code_block = False
+        field_line = False
         code_blocks = 0
         added_code_blocks = []
         removed_code_blocks = []
+        removed_field_values = {}
 
         # we should have included enough context lines that there is only one hunk per file
         for hunk in patched_file:
             for line in hunk:
+                field_line = False
+                current_value = ''
                 # normal parsers to tell.  So will just have to use the delimiters manually.
                 if item_format == ITEM_FORMAT_MARKDOWN:
                     if handler.FM_BOUNDARY.search(line.value):
@@ -157,11 +164,14 @@ def _process_diff(patch_set, temp_path):
                 # only want to check the field name when in the yaml section
                 # this should allow for multi-line field values
                 if item_format == ITEM_FORMAT_YAML or delimiter_count == 1:
-                    if not line.value.startswith(" "):
-                        field, _ = line.value.split(':', 2)
+                    if not line.value.startswith(" ") and not line.value.startswith("-"):
+                        field, value = line.value.split(':', 2)
+                        field_line = True
+                        current_value = value
                         if field != current_field:
                             current_field = field
                             normative_field = field not in NON_NORMATIVE_FIELDS
+                            table_field = field in TABLE_FIELDS
 
                 # declare a normative change so the file gets added to the document/tree
                 # potential problem with MD files here as the header will be included
@@ -169,6 +179,29 @@ def _process_diff(patch_set, temp_path):
                 if normative_field or delimiter_count >= 2:
                     if line.is_removed or line.is_added:
                         normative_change = True
+                
+                # declare a dictionary of field names and list of removed lines
+                # Add value to dictionary for removed normative lines from each field.
+                # For added lines for each field, check if there were removed lines
+                # and if so, change the values to be multi-line and add in the decorations
+                if current_field not in removed_field_values:
+                    removed_field_values[current_field] = []
+
+                if normative_field and normative_change and field_line and table_field:
+                    if line.is_removed:
+                        removed_field_values[current_field].append(current_value)
+                        continue
+
+                    if len(removed_field_values[current_field]) > 0:
+                        current_item.append(f"{field}: |\r\n")
+                        for r_value in removed_field_values[current_field]:
+                            current_item.append(REMOVED_LINE.format(r_value.strip()))
+                        if current_value.strip() != '':
+                            if line.is_added:
+                                current_item.append(ADDED_LINE.format(current_value.strip()))
+                            else:
+                                current_item.append(f"  {current_value}\r\n")
+                        continue
 
                 doc_name = os.path.split(os.path.dirname(patched_file.path))[1]
                 # we only want to decorate the added and removed lines in the text section

@@ -22,6 +22,12 @@ NON_NORMATIVE_FIELDS = [
     "reviewed"
 ]
 
+TABLE_FIELDS = [
+    "primarykey",
+    "typesize",
+    "valuelist",
+]
+
 # We're going to parse out the code blocks if they exist so we can get complete sections to compare
 MARKDOWN_CODE_BLOCK_DELIMITER = "```"
 CODE_BLOCK_BOUNDARY = re.compile(r"`{3,}")
