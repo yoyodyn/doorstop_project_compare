@@ -182,7 +182,7 @@ def _ovr_lines_markdown(obj, **kwargs):
         text_lines = item.text.splitlines()
         if item.header:
             yield ""
-            yield f"### {item.header}"
+            yield f"#### {item.header}"
             yield ""
         # Text
         if item.text:
@@ -230,6 +230,8 @@ def _lines_overview(obj):
     extensions=doorstop.publisher.EXTENSIONS
 
     text = "\n".join(_ovr_lines_markdown(obj, linkify=False, to_html=True))
+    if len(text) > 0:
+        text = "### Overview\n" + text
     body = markdown.markdown(text, extensions=extensions)
 
     yield body
@@ -238,6 +240,8 @@ def _lines_requirements(obj):
     extensions=doorstop.publisher.EXTENSIONS
 
     text = "\n".join(_req_lines_markdown(obj, linkify=False, to_html=True))
+    if len(text) > 0:
+        text = "### Requirements Changes\n" + text
     body = markdown.markdown(text, extensions=extensions)
     yield body
 
@@ -245,6 +249,8 @@ def _lines_tables(obj):
     extensions=doorstop.publisher.EXTENSIONS
 
     text = "\n".join(_tab_lines_markdown(obj, linkify=False, to_html=True))
+    if len(text) > 0:
+        text = "### Table Changes\n" + text
     body = markdown.markdown(text, extensions=extensions)
     yield body
 
